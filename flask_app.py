@@ -132,4 +132,4 @@ def get_suggests(user_id):
 
 
 if __name__ == '__main__':
-    app.run()
+    app.run(port=8008, host='127.0.0.1')
