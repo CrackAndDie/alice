@@ -97,8 +97,10 @@ def handle_dialog(res, req):
                     ]
             else:
                 play_game(res, req)
-    else:
+    elif 'помощь' in req['request']['nlu']['tokens']:
         res['response']['text'] = 'Это игра, где сначала нужно представиться, а потом попытаться угадать три города'
+    else:
+        res['response']['text'] = 'Хорошо, сейчас покажу'
 
 
 def play_game(res, req):
