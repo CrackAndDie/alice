@@ -16,6 +16,7 @@ cities = {
     'париж': ["1652229/f77136c2364eb90a3ea8",
               '3450494/aca7ed7acefde22341bdc']
 }
+counts = {'москва': 'россия', 'нью-йорк': 'сша', 'париж': 'франция'}
 
 sessionStorage = {}
 
@@ -79,6 +80,7 @@ def handle_dialog(res, req):
                     else:
                         sessionStorage[user_id]['game_started'] = True
                         sessionStorage[user_id]['attempt'] = 1
+                        sessionStorage[user_id]['step'] = 1
                         play_game(res, req)
                 elif 'нет' in req['request']['nlu']['tokens']:
                     res['response']['text'] = 'До свидания!'
@@ -106,7 +108,8 @@ def handle_dialog(res, req):
 def play_game(res, req):
     user_id = req['session']['user_id']
     attempt = sessionStorage[user_id]['attempt']
-    if attempt == 1:
+    step = sessionStorage[user_id]['step']
+    if step == 1:
         city = random.choice(list(cities))
         while city in sessionStorage[user_id]['guessed_cities']:
             city = random.choice(list(cities))
@@ -116,12 +119,13 @@ def play_game(res, req):
         res['response']['card']['title'] = 'Какой это город?'
         res['response']['card']['image_id'] = cities[city][attempt - 1]
         res['response']['text'] = 'Я угадал!'
-    else:
+        sessionStorage[user_id]['step'] = 2
+    elif step == 2:
         city = sessionStorage[user_id]['city']
         if get_city(req) == city:
-            res['response']['text'] = 'Правильно. Сыграем еще?'
+            res['response']['text'] = 'Правильно. А в какой стране этот город?'
             sessionStorage[user_id]['guessed_cities'].append(city)
-            sessionStorage[user_id]['game_started'] = False
+            sessionStorage[user_id]['game_started'] = True
             if res['response'].get('buttons', 'gg') != 'gg':
                 res['response']['buttons'].append({
                     "title": "Покажи город на карте",
@@ -134,11 +138,13 @@ def play_game(res, req):
                     "url": "https://yandex.ru/maps/?mode=search&text={0}".format(city),
                     "hide": True
                 }]
+            sessionStorage[user_id]['step'] = 3
+            sessionStorage[user_id]['attempt'] = 1
             return
         else:
             if attempt == 3:
-                res['response']['text'] = f'Вы пытались. Это {city.title()}. Сыграем еще?'
-                sessionStorage[user_id]['game_started'] = False
+                res['response']['text'] = f'Вы пытались. Это {city.title()}. А в какой стране этот город?'
+                sessionStorage[user_id]['game_started'] = True
                 sessionStorage[user_id]['guessed_cities'].append(city)
                 if res['response'].get('buttons', 'gg') != 'gg':
                     res['response']['buttons'].append({
@@ -152,6 +158,8 @@ def play_game(res, req):
                         "url": "https://yandex.ru/maps/?mode=search&text={0}".format(city),
                         "hide": True
                     }]
+                sessionStorage[user_id]['step'] = 3
+                sessionStorage[user_id]['attempt'] = 1
                 return
             else:
                 res['response']['card'] = {}
@@ -159,6 +167,46 @@ def play_game(res, req):
                 res['response']['card']['title'] = 'Не верно, попробуйте еще раз'
                 res['response']['card']['image_id'] = cities[city][attempt - 1]
                 res['response']['text'] = 'Я угадал!'
+    elif step == 3:
+        city = sessionStorage[user_id]['city']
+        count = counts[city]
+        if get_count(req) == count:
+            res['response']['text'] = 'Правильно. Сыграем еще?'
+            sessionStorage[user_id]['game_started'] = False
+            if res['response'].get('buttons', 'gg') != 'gg':
+                res['response']['buttons'].append({
+                    "title": "Покажи город на карте",
+                    "url": "https://yandex.ru/maps/?mode=search&text={0}".format(city),
+                    "hide": True
+                })
+            else:
+                res['response']['buttons'] = [{
+                    "title": "Покажи город на карте",
+                    "url": "https://yandex.ru/maps/?mode=search&text={0}".format(city),
+                    "hide": True
+                }]
+            sessionStorage[user_id]['step'] = 1
+            return
+        else:
+            if attempt == 3:
+                res['response']['text'] = f'Вы пытались. Это {count}. Сыграем еще?'
+                sessionStorage[user_id]['game_started'] = False
+                if res['response'].get('buttons', 'gg') != 'gg':
+                    res['response']['buttons'].append({
+                        "title": "Покажи город на карте",
+                        "url": "https://yandex.ru/maps/?mode=search&text={0}".format(city),
+                        "hide": True
+                    })
+                else:
+                    res['response']['buttons'] = [{
+                        "title": "Покажи город на карте",
+                        "url": "https://yandex.ru/maps/?mode=search&text={0}".format(city),
+                        "hide": True
+                    }]
+                sessionStorage[user_id]['step'] = 1
+                return
+            else:
+                res['response']['text'] = 'Неверно! Попробуйте еще раз'
     sessionStorage[user_id]['attempt'] += 1
 
 
@@ -166,6 +214,12 @@ def get_city(req):
     for entity in req['request']['nlu']['entities']:
         if entity['type'] == 'YANDEX.GEO':
             return entity['value'].get('city', None)
+
+
+def get_count(req):
+    for entity in req['request']['nlu']['entities']:
+        if entity['type'] == 'YANDEX.GEO':
+            return entity['value'].get('country', None)
 
 
 def get_first_name(req):
