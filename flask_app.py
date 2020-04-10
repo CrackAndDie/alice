@@ -1,85 +1,23 @@
-import requests
-import math
 from flask import Flask, request
 import logging
 import json
+import random
 import os
-
-
-def get_coordinates(city_name):
-    try:
-        # url, по которому доступно API Яндекс.Карт
-        url = "https://geocode-maps.yandex.ru/1.x/"
-        # параметры запроса
-        params = {
-            "apikey": "40d1649f-0493-4b70-98ba-98533de7710b",
-            # город, координаты которого мы ищем
-            'geocode': city_name,
-            # формат ответа от сервера, в данном случае JSON
-            'format': 'json'
-        }
-        # отправляем запрос
-        response = requests.get(url, params)
-        # получаем JSON ответа
-        jsonn = response.json()
-        # получаем координаты города
-        # (там написаны долгота(longitude), широта(latitude) через пробел)
-        # посмотреть подробное описание JSON-ответа можно
-        # в документации по адресу https://tech.yandex.ru/maps/geocoder/
-        coordinates_str = jsonn['response']['GeoObjectCollection'][
-            'featureMember'][0]['GeoObject']['Point']['pos']
-        # Превращаем string в список, так как
-        # точка - это пара двух чисел - координат
-        long, lat = map(float, coordinates_str.split())
-        # Вернем ответ
-        return long, lat
-    except Exception as e:
-        return e
-
-
-def get_country(city_name):
-    try:
-        url = "https://geocode-maps.yandex.ru/1.x/"
-        params = {
-            "apikey": "40d1649f-0493-4b70-98ba-98533de7710b",
-            'geocode': city_name,
-            'format': 'json'
-        }
-        data = requests.get(url, params).json()
-        # все отличие тут, мы получаем имя страны
-        return data['response']['GeoObjectCollection'][
-            'featureMember'][0]['GeoObject']['metaDataProperty'][
-            'GeocoderMetaData']['AddressDetails']['Country']['CountryName']
-    except Exception as e:
-        return e
-
-
-def get_distance(p1, p2):
-    # p1 и p2 - это кортежи из двух элементов - координаты точек
-    radius = 6373.0
-
-    lon1 = math.radians(p1[0])
-    lat1 = math.radians(p1[1])
-    lon2 = math.radians(p2[0])
-    lat2 = math.radians(p2[1])
-
-    d_lon = lon2 - lon1
-    d_lat = lat2 - lat1
-
-    a = math.sin(d_lat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(d_lon / 2) ** 2
-    c = 2 * math.atan2(a ** 0.5, (1 - a) ** 0.5)
-
-    distance = radius * c
-    return distance
-
 
 app = Flask(__name__)
 
-# Добавляем логирование в файл.
-# Чтобы найти файл, перейдите на pythonwhere в раздел files,
-# он лежит в корневой папке
-logging.basicConfig(level=logging.INFO, filename='app.log',
-                    format='%(asctime)s %(levelname)s %(name)s %(message)s')
+logging.basicConfig(level=logging.INFO)
+
+cities = {
+    'москва': ['1540737/daa6e420d33102bf6947',
+               '213044/7df73ae4cc715175059e'],
+    'нью-йорк': ['1652229/728d5c86707054d4745f',
+                 '1030494/aca7ed7acefde2606bdc'],
+    'париж': ["1652229/f77136c2364eb90a3ea8",
+              '3450494/aca7ed7acefde22341bdc']
+}
+
+sessionStorage = {}
 
 
 @app.route('/post', methods=['POST'])
@@ -93,39 +31,145 @@ def main():
         }
     }
     handle_dialog(response, request.json)
-    logging.info('Request: %r', response)
+    if response['response'].get('buttons', 'gg') != 'gg':
+        response['response']['buttons'].append({
+                    'title': 'помощь',
+                    'hide': True
+                })
+    else:
+        response['response']['buttons'] = [{'title': 'помощь', 'hide': True}]
+    logging.info('Response: %r', response)
     return json.dumps(response)
 
 
 def handle_dialog(res, req):
     user_id = req['session']['user_id']
     if req['session']['new']:
-        res['response']['text'] = \
-            'Привет! Я могу показать город или сказать расстояние между городами!'
+        res['response']['text'] = 'Привет, назови свое имя!'
+        sessionStorage[user_id] = {
+            'first_name': None,
+            'game_started': False
+        }
         return
-    # Получаем города из нашего
-    cities = get_cities(req)
-    if not cities:
-        res['response']['text'] = 'Ты не написал название не одного города!'
-    elif len(cities) == 1:
-        res['response']['text'] = 'Этот город в стране - ' + \
-                                  get_country(cities[0])
-    elif len(cities) == 2:
-        distance = get_distance(get_coordinates(
-            cities[0]), get_coordinates(cities[1]))
-        res['response']['text'] = 'Расстояние между этими городами: ' + \
-                                  str(round(distance)) + ' км.'
+    if 'помощь' not in req['request']['nlu']['tokens'] and "Покажи город на карте" not in req['request']['nlu']['tokens']:
+        if sessionStorage[user_id]['first_name'] is None:
+            first_name = get_first_name(req)
+            if first_name is None:
+                res['response']['text'] = 'Не расслышала имя. Повтори, пожалуйста!'
+            else:
+                sessionStorage[user_id]['first_name'] = first_name
+                sessionStorage[user_id]['guessed_cities'] = []
+                res['response']['text'] = f'Приятно познакомиться, {first_name.title()}. Я - Алиса, отгадаешь город по фото?'
+                res['response']['buttons'] = [
+                    {
+                        'title': 'да',
+                        'hide': True
+                    },
+                    {
+                        'title': 'нет',
+                        'hide': True
+                    }
+                ]
+        else:
+            if not sessionStorage[user_id]['game_started']:
+                if 'да' in req['request']['nlu']['tokens']:
+                    if len(sessionStorage[user_id]['guessed_cities']) == 3:
+                        res['response']['text'] = 'Все города угаданы, спасибо за игру!'
+                        res['end_session'] = True
+                    else:
+                        sessionStorage[user_id]['game_started'] = True
+                        sessionStorage[user_id]['attempt'] = 1
+                        play_game(res, req)
+                elif 'нет' in req['request']['nlu']['tokens']:
+                    res['response']['text'] = 'До свидания!'
+                    res['end_session'] = True
+                else:
+                    res['response']['text'] = 'Не поняла ответа. Да или нет?'
+                    res['response']['buttons'] = [
+                        {
+                            'title': 'да',
+                            'hide': True
+                        },
+                        {
+                            'title': 'нет',
+                            'hide': True
+                        }
+                    ]
+            else:
+                play_game(res, req)
     else:
-        res['response']['text'] = 'Слишком много городов!'
+        res['response']['text'] = 'Это игра, где сначала нужно представиться, а потом попытаться угадать три города'
 
 
-def get_cities(req):
-    cities = []
+def play_game(res, req):
+    user_id = req['session']['user_id']
+    attempt = sessionStorage[user_id]['attempt']
+    if attempt == 1:
+        city = random.choice(list(cities))
+        while city in sessionStorage[user_id]['guessed_cities']:
+            city = random.choice(list(cities))
+        sessionStorage[user_id]['city'] = city
+        res['response']['card'] = {}
+        res['response']['card']['type'] = 'BigImage'
+        res['response']['card']['title'] = 'Какой это город?'
+        res['response']['card']['image_id'] = cities[city][attempt - 1]
+        res['response']['text'] = 'Я угадал!'
+    else:
+        city = sessionStorage[user_id]['city']
+        if get_city(req) == city:
+            res['response']['text'] = 'Правильно. Сыграем еще?'
+            sessionStorage[user_id]['guessed_cities'].append(city)
+            sessionStorage[user_id]['game_started'] = False
+            if res['response'].get('buttons', 'gg') != 'gg':
+                res['response']['buttons'].append({
+                    "title": "Покажи город на карте",
+                    "url": "https://yandex.ru/maps/?mode=search&text={0}".format(city),
+                    "hide": True
+                })
+            else:
+                res['response']['buttons'] = [{
+                    "title": "Покажи город на карте",
+                    "url": "https://yandex.ru/maps/?mode=search&text={0}".format(city),
+                    "hide": True
+                }]
+            return
+        else:
+            if attempt == 3:
+                res['response']['text'] = f'Вы пытались. Это {city.title()}. Сыграем еще?'
+                sessionStorage[user_id]['game_started'] = False
+                sessionStorage[user_id]['guessed_cities'].append(city)
+                if res['response'].get('buttons', 'gg') != 'gg':
+                    res['response']['buttons'].append({
+                        "title": "Покажи город на карте",
+                        "url": "https://yandex.ru/maps/?mode=search&text={0}".format(city),
+                        "hide": True
+                    })
+                else:
+                    res['response']['buttons'] = [{
+                        "title": "Покажи город на карте",
+                        "url": "https://yandex.ru/maps/?mode=search&text={0}".format(city),
+                        "hide": True
+                    }]
+                return
+            else:
+                res['response']['card'] = {}
+                res['response']['card']['type'] = 'BigImage'
+                res['response']['card']['title'] = 'Не верно, попробуйте еще раз'
+                res['response']['card']['image_id'] = cities[city][attempt - 1]
+                res['response']['text'] = 'Я угадал!'
+    sessionStorage[user_id]['attempt'] += 1
+
+
+def get_city(req):
     for entity in req['request']['nlu']['entities']:
         if entity['type'] == 'YANDEX.GEO':
-            if 'city' in entity['value']:
-                cities.append(entity['value']['city'])
-    return cities
+            return entity['value'].get('city', None)
+
+
+def get_first_name(req):
+    for entity in req['request']['nlu']['entities']:
+        if entity['type'] == 'YANDEX.FIO':
+            return entity['value'].get('first_name', None)
 
 
 if __name__ == '__main__':
