@@ -31,6 +31,13 @@ def main():
         }
     }
     handle_dialog(response, request.json)
+    if response['response']['buttons']:
+        response['response']['buttons'].append({
+                    'title': 'помощь',
+                    'hide': True
+                })
+    else:
+        response['response']['buttons'] = [{'title': 'помощь', 'hide': True}]
     logging.info('Response: %r', response)
     return json.dumps(response)
 
@@ -44,40 +51,15 @@ def handle_dialog(res, req):
             'game_started': False
         }
         return
-
-    if sessionStorage[user_id]['first_name'] is None:
-        first_name = get_first_name(req)
-        if first_name is None:
-            res['response']['text'] = 'Не расслышала имя. Повтори, пожалуйста!'
-        else:
-            sessionStorage[user_id]['first_name'] = first_name
-            sessionStorage[user_id]['guessed_cities'] = []
-            res['response']['text'] = f'Приятно познакомиться, {first_name.title()}. Я - Алиса, отгадаешь город по фото?'
-            res['response']['buttons'] = [
-                {
-                    'title': 'да',
-                    'hide': True
-                },
-                {
-                    'title': 'нет',
-                    'hide': True
-                }
-            ]
-    else:
-        if not sessionStorage[user_id]['game_started']:
-            if 'да' in req['request']['nlu']['tokens']:
-                if len(sessionStorage[user_id]['guessed_cities']) == 3:
-                    res['response']['text'] = 'Все города угаданы, спасибо за игру!'
-                    res['end_session'] = True
-                else:
-                    sessionStorage[user_id]['game_started'] = True
-                    sessionStorage[user_id]['attempt'] = 1
-                    play_game(res, req)
-            elif 'нет' in req['request']['nlu']['tokens']:
-                res['response']['text'] = 'До свидания!'
-                res['end_session'] = True
+    if 'помощь' not in req['request']['nlu']['tokens']:
+        if sessionStorage[user_id]['first_name'] is None:
+            first_name = get_first_name(req)
+            if first_name is None:
+                res['response']['text'] = 'Не расслышала имя. Повтори, пожалуйста!'
             else:
-                res['response']['text'] = 'Не поняла ответа. Да или нет?'
+                sessionStorage[user_id]['first_name'] = first_name
+                sessionStorage[user_id]['guessed_cities'] = []
+                res['response']['text'] = f'Приятно познакомиться, {first_name.title()}. Я - Алиса, отгадаешь город по фото?'
                 res['response']['buttons'] = [
                     {
                         'title': 'да',
@@ -89,7 +71,34 @@ def handle_dialog(res, req):
                     }
                 ]
         else:
-            play_game(res, req)
+            if not sessionStorage[user_id]['game_started']:
+                if 'да' in req['request']['nlu']['tokens']:
+                    if len(sessionStorage[user_id]['guessed_cities']) == 3:
+                        res['response']['text'] = 'Все города угаданы, спасибо за игру!'
+                        res['end_session'] = True
+                    else:
+                        sessionStorage[user_id]['game_started'] = True
+                        sessionStorage[user_id]['attempt'] = 1
+                        play_game(res, req)
+                elif 'нет' in req['request']['nlu']['tokens']:
+                    res['response']['text'] = 'До свидания!'
+                    res['end_session'] = True
+                else:
+                    res['response']['text'] = 'Не поняла ответа. Да или нет?'
+                    res['response']['buttons'] = [
+                        {
+                            'title': 'да',
+                            'hide': True
+                        },
+                        {
+                            'title': 'нет',
+                            'hide': True
+                        }
+                    ]
+            else:
+                play_game(res, req)
+    else:
+        res['response']['text'] = 'Это игра, где сначала нужно представиться, а потом попытаться угадать три города'
 
 
 def play_game(res, req):
