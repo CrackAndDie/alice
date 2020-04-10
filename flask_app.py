@@ -29,6 +29,7 @@ logging.basicConfig(level=logging.INFO)
 # Когда он откажется купить слона,
 # то мы уберем одну подсказку. Как будто что-то меняется :)
 sessionStorage = {}
+flag_for_sug = 0
 
 
 @app.route('/post', methods=['POST'])
@@ -81,6 +82,20 @@ def handle_dialog(req, res):
         res['response']['buttons'] = get_suggests(user_id)
         return
 
+    if flag_for_sug == 1:
+        sessionStorage[user_id] = {
+            'suggests': [
+                "Не хочу.",
+                "Не буду.",
+                "Отстань!",
+            ]
+        }
+        # Заполняем текст ответа
+        res['response']['text'] = 'Купи кролика!'
+        # Получим подсказки
+        res['response']['buttons'] = get_suggests(user_id)
+        return
+
     # Сюда дойдем только, если пользователь не новый,
     # и разговор с Алисой уже был начат
     # Обрабатываем ответ пользователя.
@@ -94,18 +109,26 @@ def handle_dialog(req, res):
             req['request']['original_utterance'].lower().find('покупаю') != -1 or\
             req['request']['original_utterance'].lower().find('хорошо') != -1:
         # Пользователь согласился, прощаемся.
-        res['response']['text'] = 'Слона можно найти на Яндекс.Маркете!'
+        if flag_for_sug == 0:
+            res['response']['text'] = 'Слона можно найти на Яндекс.Маркете!'
+        else:
+            res['response']['text'] = 'Кролика можно найти на Яндекс.Маркете!'
         res['response']['end_session'] = True
         return
 
     # Если нет, то убеждаем его купить слона!
-    res['response']['text'] = \
-        f"Все говорят '{req['request']['original_utterance']}', а ты купи слона!"
+    if flag_for_sug == 0:
+        res['response']['text'] = \
+            f"Все говорят '{req['request']['original_utterance']}', а ты купи слона!"
+    else:
+        res['response']['text'] = \
+            f"Все говорят '{req['request']['original_utterance']}', а ты купи кролика!"
     res['response']['buttons'] = get_suggests(user_id)
 
 
 # Функция возвращает две подсказки для ответа.
 def get_suggests(user_id):
+    global flag_for_sug
     session = sessionStorage[user_id]
 
     # Выбираем две первые подсказки из массива.
@@ -121,11 +144,19 @@ def get_suggests(user_id):
     # Если осталась только одна подсказка, предлагаем подсказку
     # со ссылкой на Яндекс.Маркет.
     if len(suggests) < 2:
-        suggests.append({
-            "title": "Ладно",
-            "url": "https://market.yandex.ru/search?text=слон",
-            "hide": True
-        })
+        if flag_for_sug == 0:
+            suggests.append({
+                "title": "Ладно",
+                "url": "https://market.yandex.ru/search?text=слон",
+                "hide": True
+            })
+            flag_for_sug += 1
+        else:
+            suggests.append({
+                "title": "Ладно",
+                "url": "https://market.yandex.ru/search?text=кролик",
+                "hide": True
+            })
 
     return suggests
 
