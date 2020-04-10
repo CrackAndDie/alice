@@ -51,7 +51,7 @@ def handle_dialog(res, req):
             'game_started': False
         }
         return
-    if 'помощь' not in req['request']['nlu']['tokens'] and "Покажи город на карте" not in req['request']['nlu']['tokens']:
+    if 'помощь' not in req['request']['nlu']['tokens'] and "Покажи город на карте" != req['request']['command']:
         if sessionStorage[user_id]['first_name'] is None:
             first_name = get_first_name(req)
             if first_name is None:
