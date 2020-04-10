@@ -30,6 +30,7 @@ logging.basicConfig(level=logging.INFO)
 # то мы уберем одну подсказку. Как будто что-то меняется :)
 sessionStorage = {}
 flag_for_sug = 0
+first_call = True
 
 
 @app.route('/post', methods=['POST'])
@@ -62,6 +63,7 @@ def main():
 
 
 def handle_dialog(req, res):
+    global first_call
     user_id = req['session']['user_id']
 
     if req['session']['new']:
@@ -82,7 +84,7 @@ def handle_dialog(req, res):
         res['response']['buttons'] = get_suggests(user_id)
         return
 
-    if flag_for_sug == 1:
+    if flag_for_sug == 1 and first_call:
         sessionStorage[user_id] = {
             'suggests': [
                 "Не хочу.",
@@ -94,6 +96,7 @@ def handle_dialog(req, res):
         res['response']['text'] = 'Купи кролика!'
         # Получим подсказки
         res['response']['buttons'] = get_suggests(user_id)
+        first_call = False
         return
 
     # Сюда дойдем только, если пользователь не новый,
@@ -128,7 +131,7 @@ def handle_dialog(req, res):
 
 # Функция возвращает две подсказки для ответа.
 def get_suggests(user_id):
-    global flag_for_sug
+    global flag_for_sug, first_call
     session = sessionStorage[user_id]
 
     # Выбираем две первые подсказки из массива.
@@ -151,6 +154,7 @@ def get_suggests(user_id):
                 "hide": True
             })
             flag_for_sug += 1
+            first_call = True
         else:
             suggests.append({
                 "title": "Ладно",
