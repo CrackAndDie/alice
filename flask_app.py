@@ -31,7 +31,7 @@ def main():
         }
     }
     handle_dialog(response, request.json)
-    if response['response']['buttons']:
+    if response['response'].get('buttons', 'gg') != 'gg':
         response['response']['buttons'].append({
                     'title': 'помощь',
                     'hide': True
