@@ -64,16 +64,6 @@ def handle_dialog(res, req):
                 sessionStorage[user_id]['first_name_up'] = first_name[0].upper() + first_name[1:]
                 sessionStorage[user_id]['guessed_cities'] = []
                 res['response']['text'] = f'Приятно познакомиться, {first_name.title()}. Я - Алиса, а из какого ты города?'
-                res['response']['buttons'] = [
-                    {
-                        'title': 'да',
-                        'hide': True
-                    },
-                    {
-                        'title': 'нет',
-                        'hide': True
-                    }
-                ]
         else:
             if sessionStorage[user_id]['talks'] == 1:
                 his_city = get_city(req)
